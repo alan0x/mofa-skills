@@ -397,6 +397,7 @@ fn run_plugin(tool_name: &str, cancel: &std::sync::atomic::AtomicBool) -> Result
     let result: Result<(PluginOutput, serde_json::Value)> = match tool_name {
         "mofa_slides" => plugin_slides(&args, &mofa_root, &cfg, cancel).map(|(s, v)| (s.into(), v)),
         "mofa_cards" => plugin_cards(&args, &mofa_root, &cfg).map(|o| (o, serde_json::Value::Null)),
+        "mofa_image" => plugin_image(&args, &cfg).map(|o| (o, serde_json::Value::Null)),
         "mofa_comic" => {
             plugin_comic(&args, &mofa_root, &cfg).map(|s| (s.into(), serde_json::Value::Null))
         }
@@ -691,6 +692,63 @@ fn plugin_slides(
     });
 
     Ok((format!("Generated PPTX: {}", out.display()), summary))
+}
+
+/// Generate a single free-form illustration via Gemini `gen_image`.
+///
+/// Unlike `mofa_cards` / `mofa_infographic` (which wrap the image in greeting-card
+/// or multi-section poster chrome), this produces one clean borderless PNG from a
+/// prompt — the primitive needed to embed an illustration inside other content
+/// (e.g. rich-output HTML). Optional `ref_images` lets a caller ground the
+/// illustration on a reference image.
+fn plugin_image(args: &serde_json::Value, cfg: &config::MofaConfig) -> Result<PluginOutput> {
+    let prompt = args
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| eyre::eyre!("missing 'prompt'"))?;
+    let out = args
+        .get("out")
+        .and_then(|v| v.as_str())
+        .map(|s| relocate_path(std::path::Path::new(s)))
+        .ok_or_else(|| eyre::eyre!("missing 'out'"))?;
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+    let aspect = args.get("aspect").and_then(|v| v.as_str());
+    let model = args.get("gen_model").and_then(|v| v.as_str());
+    let ref_images: Vec<PathBuf> = args
+        .get("ref_images")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| relocate_path(std::path::Path::new(s)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let ref_borrowed: Vec<&std::path::Path> = ref_images.iter().map(|p| p.as_path()).collect();
+
+    // `from_config` is vertex-aware: it builds a Vertex client from the SA JSON
+    // when `vertex` is configured, otherwise falls back to the api-key path.
+    // (Plain `gemini_key()` only checks GEMINI_API_KEY / api_keys.gemini and
+    // would wrongly report "Gemini API key required" on a vertex-only setup.)
+    let gemini = crate::gemini::GeminiClient::from_config(cfg)?;
+
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let produced = gemini
+        .gen_image(prompt, &out, image_size, aspect, &ref_borrowed, model, None)?
+        .ok_or_else(|| eyre::eyre!("image generation returned no output"))?;
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let abs = if produced.is_absolute() {
+        produced.clone()
+    } else {
+        cwd.join(&produced)
+    };
+    Ok(PluginOutput {
+        text: format!("Generated illustration: {}", produced.display()),
+        files: vec![abs.display().to_string()],
+    })
 }
 
 fn plugin_cards(

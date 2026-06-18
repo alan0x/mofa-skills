@@ -1,0 +1,60 @@
+{
+  "name": "mofa-image",
+  "version": "0.1.0",
+  "timeout_secs": 1800,
+  "skill_md_auto_inject": false,
+  "discovery": {
+    "summary": "Generate a single free-form illustration PNG from a prompt via Gemini (clean borderless image, no card/poster chrome). Optional reference images ground the result. Use when you need one realistic or diagrammatic picture of a thing — e.g. an illustration to embed inside other content.",
+    "hints": [
+      { "when": "first-time use or unsure how to invoke the tool", "read": "SKILL.md" },
+      { "when": "need the input JSON shape or output path rules", "read": "SKILL.md" }
+    ]
+  },
+  "binaries": {
+    "darwin-aarch64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v1.0.2/mofa-darwin-aarch64.tar.gz"
+    }
+  },
+  "tools": [
+    {
+      "name": "mofa_image",
+      "spawn_only": true,
+      "spawn_only_message": "SUCCESS: Image generation is now running in background. The illustration will be automatically delivered when ready. No further action needed for this request.",
+      "description": "Generate a single free-form illustration as a PNG image via Gemini. Use for one realistic/diagrammatic picture of a subject (not greeting cards or multi-section posters — use mofa_cards / mofa_infographic for those). The 'out' path MUST be relative. Runs in background — do NOT wait for it.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Description of the illustration to generate"
+          },
+          "out": {
+            "type": "string",
+            "description": "Output PNG path, RELATIVE to the workspace (e.g. mofa-image-20260618/illustration.png). Never absolute, never prefixed with skill-output/."
+          },
+          "ref_images": {
+            "type": "array",
+            "description": "Optional reference image paths to ground the illustration (e.g. a photo of the real subject)",
+            "items": { "type": "string" }
+          },
+          "aspect": {
+            "type": "string",
+            "description": "Aspect ratio (e.g. 16:9, 1:1, 4:3)"
+          },
+          "image_size": {
+            "type": "string",
+            "description": "Image size: 1K, 2K, 4K"
+          },
+          "gen_model": {
+            "type": "string",
+            "description": "Override the image generation model"
+          }
+        },
+        "required": [
+          "prompt",
+          "out"
+        ]
+      }
+    }
+  ]
+}
